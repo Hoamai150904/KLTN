@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 
 from extract_metadata.extract_metadata import extract_metadata
 from retrieval.keyword.bm25 import bm25_topk_effective
-# from tfidf_topk_from_metadata_bge import hybrid_tfidf_knn_effective, tfidf_topk_effective, knn_topk_effective
-# from rerank_bge_finetuned import rerank_with_bge
+# from retrieval.semantic.jina import knn_topk_effective
 from rerank.alqac import rerank_with_alqac
 
 load_dotenv()
