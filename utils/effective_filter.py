@@ -2,20 +2,22 @@ from datetime import date, datetime
 from typing import Dict, Any
 
 DEFAULT_WEIGHTS = {
-    "title_dk": 0.95,
-    "title_law": 0.95,
-    "content_use": 0.7,
-    "content": 0.7,
-    "content_raw": 0.7,
-    "idd": 0.3,
-    "law": 0.3,
+    "title": 2.2,
+    "title_dk": 2.0,
+    "title_law": 1.8,
+    "content_use": 1.3,
+    "content": 1.0,
+    "content_raw": 0.8,
+    "idd": 0.6,
+    "law": 0.6,
     "idsdbs": 0.2,
-    "source_file": 0.1,
     "link_online": 0.1,
+    "source_file": 0.1,
     "ngay_bh": 0.0,
     "ngay_hl": 0.0,
     "ngay_hhl": 0.0,
 }
+
 
 def _to_iso_date(x):
     if x is None:

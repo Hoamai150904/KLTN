@@ -4,16 +4,16 @@ import requests
 import urllib3
 from typing import Dict, Any, List, Tuple, Optional
 from datetime import date, datetime
+from utils.effective_filter import build_effective_filter, get_reference_date, DEFAULT_WEIGHTS
 
 from dotenv import load_dotenv
-from utils.es_http import request_kwargs
-from utils.effective_filter import build_effective_filter, get_reference_date, DEFAULT_WEIGHTS
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
 
-ES_BASE_URL = (os.getenv("ES_BASE_URL") or os.getenv("ES_URL") or "").rstrip("/")
-ES_INDEX = os.getenv("ES_INDEX")
+ES_BASE_URL = (os.getenv("TFIDF_ES_URL") or "http://localhost:9200").rstrip("/")
+ES_INDEX = os.getenv("TFIDF_ES_INDEX", "cu_tru_law_v4")
+
 
 def _build_query_text(meta: Dict[str, Any]) -> str:
     rewrite = meta.get("query_rewrite") or []
@@ -29,7 +29,7 @@ def _build_query_text(meta: Dict[str, Any]) -> str:
     return " ".join(parts).strip()
 
 
-def build_bm25_query_from_meta(meta: Dict[str, Any], size: int = 10) -> Dict[str, Any]:
+def build_tfidf_query_from_meta(meta: Dict[str, Any], size: int = 10) -> Dict[str, Any]:
     boosts = dict(DEFAULT_WEIGHTS)
     boosts.update(meta.get("boosts") or {})
     prefer_version = (meta.get("prefer_version") or "both").lower()
@@ -121,8 +121,7 @@ def build_bm25_query_from_meta(meta: Dict[str, Any], size: int = 10) -> Dict[str
 
     return {
         "size": size,
-        "track_scores": True,
-        "_source": [
+        "fields": [
             "law", "idd", "title", "title_dk", "title_law",
             "content_use", "content", "content_raw",
             "ngay_bh", "ngay_hl", "ngay_hhl",
@@ -137,7 +136,8 @@ def search_es(base_url: str, index: str, body: Dict[str, Any]) -> Dict[str, Any]
     r = requests.post(
         url,
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        **request_kwargs(timeout=60, headers={"Content-Type": "application/json"})
+        headers={"Content-Type": "application/json"},
+        timeout=60,
     )
     if r.status_code >= 400:
         print("ES error:", r.status_code, r.text[:2000])
@@ -145,13 +145,28 @@ def search_es(base_url: str, index: str, body: Dict[str, Any]) -> Dict[str, Any]
     return r.json()
 
 
-def bm25_topk_effective(meta: Dict[str, Any], k: int = 10) -> Tuple[str, List[Dict[str, Any]]]:
+def tfidf_topk_effective(meta: Dict[str, Any], k: int = 10) -> Tuple[str, List[Dict[str, Any]]]:
     reference_date = get_reference_date(meta)
 
     fetch_size = max(k * 8, 80)
 
-    bm25_body = build_bm25_query_from_meta(meta, size=fetch_size)
-    bm25_res = search_es(ES_BASE_URL, ES_INDEX, bm25_body)
-    bm25_hits = bm25_res.get("hits", {}).get("hits", [])
+    tfidf_body = build_tfidf_query_from_meta(meta, size=fetch_size)
+    tfidf_res = search_es(ES_BASE_URL, ES_INDEX, tfidf_body)
 
-    return reference_date, bm25_hits[:k]
+    raw_hits = tfidf_res.get("hits", {}).get("hits", [])
+    hits = []
+    for h in raw_hits:
+        fields = h.get("fields", {})
+        src_like = {}
+        for kf, vf in fields.items():
+            if isinstance(vf, list) and len(vf) == 1:
+                src_like[kf] = vf[0]
+            else:
+                src_like[kf] = vf
+        hits.append({
+            "_id": h.get("_id"),
+            "_score": h.get("_score"),
+            "_source": src_like
+        })
+
+    return reference_date, hits[:k]
